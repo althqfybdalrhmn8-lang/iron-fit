@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { json, route } from "@/lib/http";
 import { MEMBER_COLUMNS, MEMBER_FROM } from "@/lib/members";
+import { PROGRAM_COLUMNS } from "@/lib/programs";
 
 export const GET = route(async () => {
   const user = await requireUser(["SUBSCRIBER"]);
@@ -13,8 +14,7 @@ export const GET = route(async () => {
 
   const [programs, nutrition, messages, progress] = await Promise.all([
     query(
-      `select p.id, p.title, p.description, p.member_id as "memberId", p.days
-       from programs p where p.member_id = $1 order by p.created_at desc`,
+      `select ${PROGRAM_COLUMNS} from programs p where p.member_id = $1 order by p.created_at desc`,
       [member.id]
     ),
     query(
