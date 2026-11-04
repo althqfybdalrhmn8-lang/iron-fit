@@ -95,3 +95,17 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .progress{position:relative;height:22px;border-radius:999px;background:#eef3f7;overflow:hidden;margin-top:12px}
 .progress div{height:100%;background:linear-gradient(90deg,#1769d8,#2563eb);transition:width .2s}
 .progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#10263d}
+.video-picker{border:1px solid #dbe4ec;border-radius:12px;padding:10px 12px 12px;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.video-picker legend{font-size:11px;color:#8296a9;padding:0 6px;display:flex;gap:6px;align-items:center}
+.video-picker .notice{grid-column:1/-1}
+.form .pick{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid #e5edf3;border-radius:10px;background:#f9fbfd;color:var(--text);font-size:12px;cursor:pointer}
+.form .pick.on{border-color:#9cc0f5;background:#eef5ff}
+.form .pick input{display:inline-block;margin:0;width:auto;padding:0;border:0}
+.pick-order{background:var(--blue);color:#fff;border-radius:6px;padding:0 6px;font-size:11px;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{background:#eef5ff;color:#1f5fae;border-radius:999px;padding:3px 10px;font-size:11px}
+.program-videos{display:grid;gap:8px;margin-top:10px}
+.inline-video-row{width:100%;display:flex;align-items:center;gap:10px;border:1px solid #d7e2eb;background:#fff;border-radius:10px;padding:9px 12px;color:var(--text);font-weight:700;text-align:start}
+.inline-video-row:hover{border-color:#9cc0f5}
+.play-dot{width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:11px;flex:none}
+.inline-video video{width:100%;aspect-ratio:16/9;border-radius:10px;background:#0b1b2e;margin-top:8px}

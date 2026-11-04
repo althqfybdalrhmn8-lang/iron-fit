@@ -16,7 +16,8 @@ type Member = {
   loginEmail?: string | null;
 };
 
-type Program = { id: string; title: string; description: string; memberId: string | null };
+type ProgramVideo = { id: string; title: string };
+type Program = { id: string; title: string; description: string; memberId: string | null; videos: ProgramVideo[] };
 
 type Nutrition = {
   id: string; title: string; calories: number; proteinG: number; carbsG: number; fatG: number;
@@ -437,19 +438,45 @@ function Programs({ programs, members, reload, toast }: { programs: Program[]; m
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [memberId, setMemberId] = useState("");
+  const [videoIds, setVideoIds] = useState<string[]>([]);
+  const [library, setLibrary] = useState<Video[]>([]);
   const [busy, run] = useBusy();
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ videos: Video[] }>("/api/videos")
+      .then((data) => { if (!cancelled) setLibrary(data.videos); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  // A program can only use general videos or videos assigned to its own member.
+  const allowedVideos = library.filter((video) => !video.memberId || video.memberId === memberId);
 
   function open(program?: Program) {
     setEditing(program || null);
     setTitle(program?.title || "");
     setDescription(program?.description || "");
     setMemberId(program?.memberId || "");
+    setVideoIds(program?.videos.map((video) => video.id) || []);
     setShow(true);
+  }
+
+  function changeMember(id: string) {
+    setMemberId(id);
+    setVideoIds((current) => current.filter((videoId) => {
+      const video = library.find((v) => v.id === videoId);
+      return !video || !video.memberId || video.memberId === id;
+    }));
+  }
+
+  function toggleVideo(id: string) {
+    setVideoIds((current) => current.includes(id) ? current.filter((v) => v !== id) : [...current, id]);
   }
 
   const save = () => run(async () => {
     try {
-      const body = JSON.stringify({ title, description, memberId: memberId || null });
+      const body = JSON.stringify({ title, description, memberId: memberId || null, videoIds });
       if (editing) {
         await api(`/api/programs/${editing.id}`, { method: "PATCH", body });
       } else {
@@ -487,7 +514,7 @@ function Programs({ programs, members, reload, toast }: { programs: Program[]; m
           <div className="form">
             <label>البرنامج<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} required minLength={2} /></label>
             <label>المشترك
-              <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+              <select value={memberId} onChange={(e) => changeMember(e.target.value)}>
                 <option value="">عام (غير مرتبط بمشترك)</option>
                 {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
               </select>
@@ -495,6 +522,24 @@ function Programs({ programs, members, reload, toast }: { programs: Program[]; m
             <label className="full">الوصف
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} />
             </label>
+            <fieldset className="full video-picker">
+              <legend>مقاطع البرنامج {videoIds.length > 0 && <span className="badge ok">{videoIds.length}</span>}</legend>
+              {allowedVideos.map((video) => {
+                const order = videoIds.indexOf(video.id);
+                return (
+                  <label key={video.id} className={`pick ${order >= 0 ? "on" : ""}`}>
+                    <input type="checkbox" checked={order >= 0} onChange={() => toggleVideo(video.id)} />
+                    {order >= 0 && <span className="pick-order">{order + 1}</span>}
+                    <span>{video.title}</span>
+                    {video.memberId && <small className="muted">خاص</small>}
+                  </label>
+                );
+              })}
+              {!allowedVideos.length && (
+                <div className="notice">لا توجد مقاطع متاحة. ارفع مقاطع من صفحة &quot;مقاطع التمارين&quot; أولًا.</div>
+              )}
+              {allowedVideos.length > 0 && <div className="notice">ترتيب الاختيار = ترتيب ظهور المقاطع للمشترك.</div>}
+            </fieldset>
           </div>
           <div className="actions">
             <button className="btn primary" disabled={busy}>{busy ? "جاري الحفظ..." : "حفظ"}</button>
@@ -509,6 +554,11 @@ function Programs({ programs, members, reload, toast }: { programs: Program[]; m
             <b>{program.title}</b>
             <small className="pre">{program.description || "—"}</small>
             <small>{program.memberId ? `المشترك: ${memberName(members, program.memberId) || "—"}` : "برنامج عام"}</small>
+            {program.videos.length > 0 && (
+              <div className="chips">
+                {program.videos.map((video) => <span className="chip" key={video.id}>🎬 {video.title}</span>)}
+              </div>
+            )}
             <div className="actions">
               <button className="btn outline" onClick={() => open(program)}>تعديل</button>
               <button className="btn danger" disabled={busy} onClick={() => { void remove(program); }}>حذف</button>
@@ -1161,6 +1211,20 @@ function Settings({ user, onSaved, toast }: { user: SessionUser; onSaved: (user:
   );
 }
 
+/** A program's video: a compact row that expands into a player on click. */
+function InlineVideo({ video, index }: { video: ProgramVideo; index: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="inline-video">
+      <button type="button" className="inline-video-row" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="play-dot">{open ? "■" : "▶"}</span>
+        <span>{index}. {video.title}</span>
+      </button>
+      {open && <video src={`/api/videos/${video.id}/stream`} controls autoPlay playsInline preload="metadata" />}
+    </div>
+  );
+}
+
 function SubscriberHome({ data }: { data: SubscriberData }) {
   const member = data.member;
   return (
@@ -1177,7 +1241,17 @@ function SubscriberHome({ data }: { data: SubscriberData }) {
           <h2>برنامجك</h2>
           <div className="list">
             {data.programs.map((program) => (
-              <div className="item" key={program.id}><b>{program.title}</b><small className="pre">{program.description}</small></div>
+              <div className="item" key={program.id}>
+                <b>{program.title}</b>
+                <small className="pre">{program.description}</small>
+                {program.videos.length > 0 && (
+                  <div className="program-videos">
+                    {program.videos.map((video, index) => (
+                      <InlineVideo key={video.id} video={video} index={index + 1} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
             {!data.programs.length && <Empty>لم يضف مدربك برنامجًا بعد</Empty>}
           </div>

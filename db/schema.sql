@@ -106,6 +106,13 @@ create table if not exists exercise_videos (
   created_at timestamptz not null default now()
 );
 
+create table if not exists program_videos (
+  program_id uuid not null references programs(id) on delete cascade,
+  video_id uuid not null references exercise_videos(id) on delete cascade,
+  position integer not null default 0,
+  primary key (program_id, video_id)
+);
+
 create index if not exists idx_members_coach on members(coach_id);
 create index if not exists idx_members_user on members(user_id);
 create index if not exists idx_progress_member on progress_entries(member_id, recorded_at desc);
@@ -116,3 +123,4 @@ create index if not exists idx_login_attempts_identifier_time on login_attempts(
 create index if not exists idx_login_attempts_ip_time on login_attempts(ip_hash, created_at desc);
 create index if not exists idx_videos_coach on exercise_videos(coach_id, created_at desc);
 create index if not exists idx_videos_member on exercise_videos(member_id);
+create index if not exists idx_program_videos_video on program_videos(video_id);
