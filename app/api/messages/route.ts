@@ -1,9 +1,9 @@
 import { query } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { badRequest, json, requireSameOrigin } from "@/lib/http";
+import { badRequest, isUuid, json, readJsonObject, requireSameOrigin, route } from "@/lib/http";
 import { text, limits } from "@/lib/validation";
 
-export async function GET() {
+export const GET = route(async () => {
   const user = await requireUser(["COACH", "SUBSCRIBER"]);
   if (user.role === "COACH") {
     const result = await query(
@@ -20,23 +20,22 @@ export async function GET() {
     [user.id]
   );
   return json({ messages: result.rows });
-}
+});
 
-export async function POST(request: Request) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
+export const POST = route(async (request: Request) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
   const user = await requireUser(["COACH"]);
 
-  let body: unknown;
-  try { body = await request.json(); } catch { return badRequest("Invalid JSON"); }
+  const input = await readJsonObject(request);
+  if (!input) return badRequest("طلب غير صالح");
 
-  const input = body as Record<string, unknown>;
   const bodyText = text(input.body, limits.message);
-  const memberId = typeof input.memberId === "string" && input.memberId ? input.memberId : null;
-
-  if (!memberId || !bodyText) return badRequest("Invalid message");
+  if (!isUuid(input.memberId)) return badRequest("اختر المشترك");
+  if (!bodyText) return badRequest("اكتب نص الرسالة");
+  const memberId = input.memberId;
 
   const owner = await query(`select id from members where id = $1 and coach_id = $2`, [memberId, user.id]);
-  if (!owner.rows[0]) return Response.json({ error: "Invalid member" }, { status: 403 });
+  if (!owner.rows[0]) return json({ error: "المشترك غير صالح" }, { status: 403 });
 
   const result = await query(
     `insert into messages(coach_id, member_id, body) values($1, $2, $3)
@@ -45,4 +44,4 @@ export async function POST(request: Request) {
   );
 
   return json({ message: result.rows[0] }, { status: 201 });
-}
+});

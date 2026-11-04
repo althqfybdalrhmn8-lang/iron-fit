@@ -1,8 +1,8 @@
 import { getSessionUser } from "@/lib/auth";
-import { json, unauthorized } from "@/lib/http";
+import { json, route, unauthorized } from "@/lib/http";
 
-export async function GET() {
+export const GET = route(async () => {
   const user = await getSessionUser();
   if (!user) return unauthorized();
   return json({ user });
-}
+});

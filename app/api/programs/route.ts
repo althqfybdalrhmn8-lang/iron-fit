@@ -1,9 +1,9 @@
 import { query } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { badRequest, json, requireSameOrigin } from "@/lib/http";
+import { badRequest, json, optionalUuid, readJsonObject, requireSameOrigin, route } from "@/lib/http";
 import { text, limits } from "@/lib/validation";
 
-export async function GET() {
+export const GET = route(async () => {
   const user = await requireUser(["COACH", "SUBSCRIBER"]);
   if (user.role === "COACH") {
     const result = await query(
@@ -20,26 +20,25 @@ export async function GET() {
     [user.id]
   );
   return json({ programs: result.rows });
-}
+});
 
-export async function POST(request: Request) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
+export const POST = route(async (request: Request) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
   const user = await requireUser(["COACH"]);
 
-  let body: unknown;
-  try { body = await request.json(); } catch { return badRequest("Invalid JSON"); }
-  if (!body || typeof body !== "object") return badRequest("Invalid request");
+  const input = await readJsonObject(request);
+  if (!input) return badRequest("طلب غير صالح");
 
-  const input = body as Record<string, unknown>;
   const title = text(input.title, limits.programTitle);
   const description = text(input.description, limits.programDescription);
-  const memberId = typeof input.memberId === "string" && input.memberId.length ? input.memberId : null;
+  const memberId = optionalUuid(input.memberId);
 
-  if (title.length < 2) return badRequest("Invalid program title");
+  if (title.length < 2) return badRequest("عنوان البرنامج يجب أن يكون حرفين على الأقل");
+  if (memberId === undefined) return badRequest("المشترك غير صالح");
 
   if (memberId) {
     const owner = await query(`select id from members where id = $1 and coach_id = $2 limit 1`, [memberId, user.id]);
-    if (!owner.rows[0]) return Response.json({ error: "Invalid member" }, { status: 403 });
+    if (!owner.rows[0]) return json({ error: "المشترك غير صالح" }, { status: 403 });
   }
 
   const result = await query(
@@ -49,4 +48,4 @@ export async function POST(request: Request) {
   );
 
   return json({ program: result.rows[0] }, { status: 201 });
-}
+});

@@ -1,52 +1,69 @@
-import { query } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { badRequest, json, requireSameOrigin } from "@/lib/http";
-import { intInRange, numberInRange, text } from "@/lib/validation";
+import { badRequest, isUuid, json, notFound, readJsonObject, requireSameOrigin, route } from "@/lib/http";
+import { MEMBER_COLUMNS, MEMBER_FROM, createSubscriberLogin, parseMemberInput } from "@/lib/members";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
+type Ctx = { params: Promise<{ id: string }> };
+
+export const PATCH = route<Ctx>(async (request, { params }) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
   const user = await requireUser(["COACH"]);
   const { id } = await params;
+  if (!isUuid(id)) return notFound();
 
-  let body: unknown;
-  try { body = await request.json(); } catch { return badRequest("Invalid JSON"); }
-  if (!body || typeof body !== "object") return badRequest("Invalid request");
+  const input = await readJsonObject(request);
+  if (!input) return badRequest("طلب غير صالح");
+  const data = parseMemberInput(input);
+  if (typeof data === "string") return badRequest(data);
 
-  const input = body as Record<string, unknown>;
-  const name = text(input.name, 60);
-  const weight = numberInRange(input.weightKg, 0, 400);
-  const adherence = intInRange(input.adherence ?? 0, 0, 100);
-  const subscriptionDays = intInRange(input.subscriptionDays ?? 30, 0, 3650);
-  const sleepHours = numberInRange(input.sleepHours ?? 0, 0, 24);
-  const status = input.status === "FOLLOW_UP" ? "FOLLOW_UP" : "ACTIVE";
+  const outcome = await withTransaction(async (client) => {
+    const existing = await client.query<{ user_id: string | null }>(
+      `select user_id from members where id = $1 and coach_id = $2 for update`,
+      [id, user.id]
+    );
+    if (!existing.rows[0]) return { status: 404 } as const;
 
-  if (name.length < 2 || weight === null || adherence === null || subscriptionDays === null || sleepHours === null) {
-    return badRequest("Invalid member data");
-  }
+    let userId = existing.rows[0].user_id;
+    if (data.login && !userId) {
+      userId = await createSubscriberLogin(client, data.name, data.login);
+      if (!userId) return { status: 409, error: "البريد الإلكتروني مستخدم مسبقًا" } as const;
+    }
 
-  const result = await query(
-    `update members set name = $1, weight_kg = $2, adherence = $3, subscription_days = $4,
-       status = $5, sleep_hours = $6, updated_at = now()
-     where id = $7 and coach_id = $8
-     returning id, name, weight_kg as "weightKg", adherence, subscription_days as "subscriptionDays",
-               status, sleep_hours as "sleepHours", last_activity as "lastActivity"`,
-    [name, weight, adherence, subscriptionDays, status, sleepHours, id, user.id]
-  );
+    await client.query(
+      `update members set name = $1, weight_kg = $2, adherence = $3, subscription_days = $4,
+         status = $5, sleep_hours = $6, user_id = $7, updated_at = now()
+       where id = $8 and coach_id = $9`,
+      [data.name, data.weightKg, data.adherence, data.subscriptionDays, data.status, data.sleepHours, userId, id, user.id]
+    );
+    if (userId) await client.query(`update users set name = $1, updated_at = now() where id = $2`, [data.name, userId]);
 
-  if (!result.rows[0]) return Response.json({ error: "Not found" }, { status: 404 });
-  return json({ member: result.rows[0] });
-}
+    const member = await client.query(`select ${MEMBER_COLUMNS} from ${MEMBER_FROM} where m.id = $1`, [id]);
+    return { status: 200, member: member.rows[0] } as const;
+  });
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
+  if (outcome.status === 404) return notFound();
+  if (outcome.status === 409) return json({ error: outcome.error }, { status: 409 });
+  return json({ member: outcome.member });
+});
+
+export const DELETE = route<Ctx>(async (request, { params }) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
   const user = await requireUser(["COACH"]);
   const { id } = await params;
+  if (!isUuid(id)) return notFound();
 
-  const result = await query(
-    `delete from members where id = $1 and coach_id = $2 returning id`,
-    [id, user.id]
-  );
+  const deleted = await withTransaction(async (client) => {
+    const result = await client.query<{ user_id: string | null }>(
+      `delete from members where id = $1 and coach_id = $2 returning user_id`,
+      [id, user.id]
+    );
+    const row = result.rows[0];
+    if (!row) return false;
+    // Remove the member's login too, otherwise it would remain as an orphan account that can still sign in.
+    if (row.user_id) await client.query(`delete from users where id = $1 and role = 'SUBSCRIBER'`, [row.user_id]);
+    return true;
+  });
 
-  if (!result.rows[0]) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!deleted) return notFound();
   return json({ ok: true });
-}
+});

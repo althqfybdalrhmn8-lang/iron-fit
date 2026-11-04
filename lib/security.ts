@@ -33,6 +33,13 @@ export async function verifyPassword(password: string, encoded: string) {
   }
 }
 
+let dummyHash: Promise<string> | null = null;
+/** A valid hash to verify against when the user doesn't exist, so response time doesn't reveal which emails are registered. */
+export function getDummyHash() {
+  dummyHash ??= hashPassword(crypto.randomBytes(16).toString("hex"));
+  return dummyHash;
+}
+
 export function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("base64url");
 }

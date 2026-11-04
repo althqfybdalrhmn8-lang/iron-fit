@@ -1,9 +1,8 @@
-import { destroySession, getSessionUser } from "@/lib/auth";
-import { badRequest, json, requireSameOrigin } from "@/lib/http";
+import { destroySession } from "@/lib/auth";
+import { badRequest, json, requireSameOrigin, route } from "@/lib/http";
 
-export async function POST(request: Request) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
-  await getSessionUser();
+export const POST = route(async (request: Request) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
   await destroySession();
   return json({ ok: true });
-}
+});

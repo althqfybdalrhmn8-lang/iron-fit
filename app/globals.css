@@ -17,7 +17,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .error{background:#fff0f1;border:1px solid #f2cdd1;color:#a53b49;padding:10px 12px;border-radius:10px;font-size:12px;margin:12px 0}
 .login-card small{display:block;margin-top:12px;color:var(--muted);font-size:10px}
 .app{min-height:100vh}
-.sidebar{position:fixed;inset:0 0 0 auto;width:252px;padding:18px 14px;background:linear-gradient(180deg,var(--navy),#10263d);color:#c6d3dd;display:flex;flex-direction:column;z-index:30}
+.sidebar{position:fixed;inset:0 0 0 auto;width:252px;padding:18px 14px;background:linear-gradient(180deg,var(--navy),#10263d);color:#c6d3dd;display:flex;flex-direction:column;z-index:30;transition:transform .2s ease}
 .brand{display:flex;gap:10px;align-items:center;padding:0 8px 22px}
 .logo-sm{width:46px;height:42px;border-radius:10px;background:linear-gradient(135deg,#1c9cff,#2563eb);display:grid;place-items:center;color:#fff;font-weight:900}
 .brand b{color:#fff;display:block;letter-spacing:2px}
@@ -29,8 +29,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .user-chip b{color:#fff}
 .user-chip small{display:block;color:#8398a9;font-size:9px}
 .avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#eaf2f9;color:#174a7b;font-weight:800}
-.main{margin-inline-end:252px;min-height:100vh}
-.topbar{position:sticky;top:0;z-index:20;height:70px;background:rgba(255,255,255,.97);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;padding:0 26px}
+.main{margin-right:252px;min-height:100vh;min-width:0}
+.topbar{position:sticky;top:0;z-index:20;height:70px;background:rgba(255,255,255,.97);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 26px}
 .topbar .right{display:flex;gap:10px;align-items:center}
 .content{padding:26px;max-width:1500px;margin:auto}
 .hero{display:flex;justify-content:space-between;align-items:end;margin-bottom:18px}
@@ -67,5 +67,23 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .toast{position:fixed;left:18px;bottom:18px;z-index:100;padding:12px 14px;border-radius:10px;background:#102b43;color:#fff;transform:translateY(120px);transition:.2s}
 .toast.show{transform:translateY(0)}
 .settings-note{background:#fff8e6;border:1px solid #f0dca6;color:#7a5c00;border-radius:10px;padding:12px;font-size:12px;margin-top:12px}
-@media(max-width:1000px){.grid4{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.sidebar{transform:translateX(100%)}.sidebar.open{transform:translateX(0)}.main{margin-inline-end:0}.form{grid-template-columns:1fr}}
+@media(max-width:1000px){.grid4{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.sidebar{transform:translateX(100%)}.sidebar.open{transform:translateX(0)}.main{margin-right:0}.form{grid-template-columns:1fr}}
 @media(max-width:680px){.content{padding:16px}.grid4{grid-template-columns:1fr 1fr}.hero{align-items:flex-start;flex-direction:column;gap:10px}.toolbar{flex-direction:column;align-items:stretch}}
+.menu-toggle{display:none;place-items:center;width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:20px;color:var(--text)}
+.backdrop{position:fixed;inset:0;background:rgba(11,27,46,.45);z-index:25}
+@media(min-width:1001px){.backdrop{display:none}}
+.empty{padding:18px;text-align:center;color:var(--muted);font-size:12px;border:1px dashed var(--line);border-radius:10px}
+.pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700}
+.badge.ok{background:#e8f7ee;color:#1f7a45}
+.badge.warn{background:#fff4e0;color:#8a5a00}
+.grid-auto{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:12px}
+.select-sm{border:1px solid #dbe4ec;border-radius:10px;background:#f9fbfd;padding:8px}
+.full-width{width:100%;margin-top:8px}
+.actions.tight{margin-top:0;flex-wrap:nowrap}
+.card h2{margin-top:0}
+.card h3{font-size:15px;margin:16px 0 10px}
+.form-card h3{margin-top:0}
+.form .notice{margin-top:0}
+@media(max-width:1000px){.menu-toggle{display:grid}}
+.btn.primary{width:auto}

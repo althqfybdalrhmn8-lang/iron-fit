@@ -1,14 +1,13 @@
-import { badRequest, json, requireSameOrigin } from "@/lib/http";
+import { requireUser } from "@/lib/auth";
+import { badRequest, json, readJsonObject, requireSameOrigin, route } from "@/lib/http";
 import { intInRange, numberInRange } from "@/lib/validation";
 
-export async function POST(request: Request) {
-  if (!requireSameOrigin(request)) return badRequest("Invalid request origin");
+export const POST = route(async (request: Request) => {
+  if (!requireSameOrigin(request)) return badRequest("مصدر الطلب غير صالح");
+  await requireUser();
 
-  let body: unknown;
-  try { body = await request.json(); } catch { return badRequest("Invalid JSON"); }
-  if (!body || typeof body !== "object") return badRequest("Invalid request");
-
-  const input = body as Record<string, unknown>;
+  const input = await readJsonObject(request);
+  if (!input) return badRequest("طلب غير صالح");
   const gender = input.gender === "female" ? "female" : "male";
   const age = intInRange(input.age, 14, 100);
   const weight = numberInRange(input.weightKg, 30, 300);
@@ -17,7 +16,7 @@ export async function POST(request: Request) {
   const goal = input.goal === "cut" || input.goal === "bulk" ? input.goal : "maintain";
 
   if (age === null || weight === null || height === null || activity === null) {
-    return badRequest("Invalid calculator data");
+    return badRequest("تحقق من القيم: العمر 14-100، الوزن 30-300، الطول 120-230");
   }
 
   const bmr = gender === "male"
@@ -36,4 +35,4 @@ export async function POST(request: Request) {
   return json({
     calories: Math.round(calories), bmr: Math.round(bmr), tdee: Math.round(tdee), protein, carbs, fat
   });
-}
+});

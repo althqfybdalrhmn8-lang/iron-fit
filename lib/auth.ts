@@ -45,16 +45,17 @@ export async function getSessionUser() {
   const token = store.get(env.sessionCookieName)?.value;
   if (!token) return null;
 
+  const tokenHash = sha256(token);
   const result = await query<SessionUser>(
     `select u.id, u.email, u.name, u.role
      from sessions s inner join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now() limit 1`,
-    [sha256(token)]
+    [tokenHash]
   );
 
   if (!result.rows[0]) return null;
 
-  await query(`update sessions set last_seen_at = now() where token_hash = $1`, [sha256(token)]);
+  await query(`update sessions set last_seen_at = now() where token_hash = $1`, [tokenHash]);
   return result.rows[0];
 }
 

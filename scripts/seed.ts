@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { env } from "../lib/env";
+import { sslConfig } from "../lib/db";
 import { hashPassword } from "../lib/security";
 
 async function main() {
@@ -16,7 +17,7 @@ async function main() {
 
   const pool = new Pool({
     connectionString: env.databaseUrl,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined
+    ssl: sslConfig()
   });
 
   try {
