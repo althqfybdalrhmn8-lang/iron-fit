@@ -1,7 +1,8 @@
 export const limits = {
   name: 60, email: 254, message: 2000,
   programTitle: 120, programDescription: 2000,
-  nutritionTitle: 120, nutritionNotes: 2000
+  nutritionTitle: 120, nutritionNotes: 2000,
+  videoTitle: 120, videoDescription: 1000
 } as const;
 
 export function text(value: unknown, max: number) {

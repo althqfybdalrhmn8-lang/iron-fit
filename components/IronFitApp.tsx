@@ -74,7 +74,8 @@ function useBusy() {
 
 const memberName = (members: Member[], id?: string | null) => members.find((m) => m.id === id)?.name;
 
-export default function IronFitApp({ user }: { user: SessionUser }) {
+export default function IronFitApp({ user: initialUser }: { user: SessionUser }) {
+  const [user, setUser] = useState(initialUser);
   const isCoach = user.role === "COACH";
   const [page, setPage] = useState(isCoach ? "dashboard" : "home");
   const [members, setMembers] = useState<Member[]>([]);
@@ -165,7 +166,10 @@ export default function IronFitApp({ user }: { user: SessionUser }) {
         ["messages", "الرسائل"], ["reports", "التقارير"], ["notifications", "الإشعارات"],
         ["videos", "مقاطع التمارين"], ["settings", "الإعدادات"]
       ]
-    : [["home", "الرئيسية"], ["calculator", "حساب السعرات"], ["progress", "التقدم"], ["messages", "الرسائل"]];
+    : [
+        ["home", "الرئيسية"], ["videos", "مقاطع التمارين"], ["calculator", "حساب السعرات"],
+        ["progress", "التقدم"], ["messages", "الرسائل"], ["settings", "الإعدادات"]
+      ];
 
   return (
     <div className="app">
@@ -225,8 +229,8 @@ export default function IronFitApp({ user }: { user: SessionUser }) {
           )}
           {isCoach && page === "reports" && <Reports members={members} programs={programs} nutrition={nutrition} />}
           {isCoach && page === "notifications" && <Notifications members={members} />}
-          {isCoach && page === "videos" && <Videos />}
-          {isCoach && page === "settings" && <Settings user={user} />}
+          {page === "videos" && <Videos isCoach={isCoach} members={members} toast={setToast} />}
+          {page === "settings" && <Settings user={user} onSaved={setUser} toast={setToast} />}
           {!isCoach && page === "home" && subscriber && <SubscriberHome data={subscriber} />}
         </section>
       </main>
@@ -923,34 +927,236 @@ function Notifications({ members }: { members: Member[] }) {
   );
 }
 
-/** Video upload needs real object storage (S3 / R2 / disk), which this project doesn't have yet. */
-function Videos() {
+type Video = {
+  id: string; title: string; description: string; memberId: string | null;
+  mimeType: string; sizeBytes: number; createdAt: string;
+};
+
+const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov";
+
+function videoMime(file: File) {
+  if (file.type) return file.type;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".mov")) return "video/quicktime";
+  if (name.endsWith(".webm")) return "video/webm";
+  return "video/mp4";
+}
+
+function formatSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} ميجابايت` : `${Math.ceil(bytes / 1024)} كيلوبايت`;
+}
+
+/** XHR instead of fetch so we can show upload progress. The file is sent as the raw body. */
+function uploadVideo(file: File, meta: { title: string; description: string; memberId: string }, onProgress: (pct: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/videos");
+    xhr.setRequestHeader("Content-Type", videoMime(file));
+    xhr.setRequestHeader("X-Video-Title", encodeURIComponent(meta.title));
+    xhr.setRequestHeader("X-Video-Description", encodeURIComponent(meta.description));
+    xhr.setRequestHeader("X-Video-Member", encodeURIComponent(meta.memberId));
+    xhr.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100)); };
+    xhr.onload = () => {
+      let data: { error?: string } = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON response */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(data.error || "تعذر رفع المقطع"));
+    };
+    xhr.onerror = () => reject(new Error("انقطع الاتصال أثناء الرفع"));
+    xhr.send(file);
+  });
+}
+
+function Videos({ isCoach, members, toast }: { isCoach: boolean; members: Member[]; toast: Toast }) {
+  const [videos, setVideos] = useState<Video[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [show, setShow] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [memberId, setMemberId] = useState("");
+  const [progress, setProgress] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [busy, run] = useBusy();
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api<{ videos: Video[] }>("/api/videos");
+      setVideos(data.videos);
+      setLoadError("");
+    } catch (error) {
+      setLoadError(errorText(error));
+    }
+  }, []);
+
+  // All state updates in refresh() happen after an await.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  function pickFile(selected: File | null) {
+    setFile(selected);
+    if (selected && !title) setTitle(selected.name.replace(/\.[^.]+$/, "").slice(0, 120));
+  }
+
+  const upload = () => run(async () => {
+    if (!file) { toast("اختر ملف الفيديو"); return; }
+    setProgress(0);
+    try {
+      await uploadVideo(file, { title, description, memberId }, setProgress);
+      setShow(false);
+      setFile(null);
+      setTitle("");
+      setDescription("");
+      setMemberId("");
+      await refresh();
+      toast("تم رفع المقطع");
+    } catch (error) {
+      toast(errorText(error));
+    } finally {
+      setProgress(null);
+    }
+  });
+
+  const remove = (video: Video) => run(async () => {
+    if (!window.confirm(`حذف المقطع "${video.title}"؟`)) return;
+    try {
+      await api(`/api/videos/${video.id}`, { method: "DELETE" });
+      await refresh();
+      toast("تم الحذف");
+    } catch (error) {
+      toast(errorText(error));
+    }
+  });
+
   return (
     <>
-      <div className="hero"><div><h1>مقاطع التمارين</h1><div className="muted">ارفع مقاطع التمارين واحفظها</div></div></div>
-      <div className="card">
-        <div className="settings-note">
-          هذه الميزة غير متاحة بعد: تحتاج مزود تخزين ملفات (مثل S3 أو R2) ومسار API للرفع.
-          ستُضاف بعد اختيار مزود التخزين.
+      <div className="hero">
+        <div>
+          <h1>مقاطع التمارين</h1>
+          <div className="muted">{isCoach ? "ارفع مقاطع شرح التمارين لمشتركيك" : "مقاطع شرح التمارين من مدربك"}</div>
         </div>
+        {isCoach && <button className="btn primary" onClick={() => setShow(true)}>+ رفع مقطع</button>}
       </div>
+
+      {isCoach && show && (
+        <form className="card form-card" onSubmit={(event) => { event.preventDefault(); void upload(); }}>
+          <div className="form">
+            <label className="full">ملف الفيديو (MP4 أو WebM أو MOV)
+              <input type="file" accept={VIDEO_ACCEPT} onChange={(e) => pickFile(e.target.files?.[0] ?? null)} required />
+            </label>
+            {file && <div className="full notice">{file.name} • {formatSize(file.size)}</div>}
+            <label>العنوان<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} required minLength={2} /></label>
+            <label>متاح لـ
+              <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                <option value="">كل المشتركين</option>
+                {members.map((member) => <option key={member.id} value={member.id}>{member.name} فقط</option>)}
+              </select>
+            </label>
+            <label className="full">الوصف
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
+            </label>
+          </div>
+          {progress !== null && (
+            <div className="progress" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+              <div style={{ width: `${progress}%` }} /><span>{progress}%</span>
+            </div>
+          )}
+          <div className="actions">
+            <button className="btn primary" disabled={busy}>{progress !== null ? "جاري الرفع..." : "رفع"}</button>
+            <button type="button" className="btn secondary" disabled={busy} onClick={() => setShow(false)}>إلغاء</button>
+          </div>
+        </form>
+      )}
+
+      {loadError && <div className="error">{loadError}</div>}
+      {videos === null && !loadError && <div className="muted">جاري التحميل...</div>}
+      {videos && !videos.length && (
+        <div className="card"><Empty>{isCoach ? "لا توجد مقاطع بعد. اضغط \"+ رفع مقطع\"." : "لم يضف مدربك مقاطع بعد"}</Empty></div>
+      )}
+      {videos && videos.length > 0 && (
+        <div className="video-grid">
+          {videos.map((video) => (
+            <div className="card video-card" key={video.id}>
+              {playing === video.id ? (
+                <video src={`/api/videos/${video.id}/stream`} controls autoPlay playsInline preload="metadata" />
+              ) : (
+                <button className="video-poster" onClick={() => setPlaying(video.id)} aria-label={`تشغيل ${video.title}`}>▶</button>
+              )}
+              <b>{video.title}</b>
+              {video.description && <small className="pre">{video.description}</small>}
+              <small className="muted">
+                {isCoach && (video.memberId ? `لـ ${memberName(members, video.memberId) || "—"} • ` : "لكل المشتركين • ")}
+                {formatSize(video.sizeBytes)} • {formatDate(video.createdAt)}
+              </small>
+              {isCoach && (
+                <div className="actions">
+                  <button className="btn danger" disabled={busy} onClick={() => { void remove(video); }}>حذف</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
 
-function Settings({ user }: { user: SessionUser }) {
+function Settings({ user, onSaved, toast }: { user: SessionUser; onSaved: (user: SessionUser) => void; toast: Toast }) {
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, run] = useBusy();
+
+  const needsCurrent = email.trim().toLowerCase() !== user.email || !!newPassword;
+
+  const save = () => run(async () => {
+    if (newPassword && newPassword !== confirmPassword) { toast("تأكيد كلمة المرور غير مطابق"); return; }
+    try {
+      const data = await api<{ user: SessionUser }>("/api/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({ name, email, currentPassword, newPassword })
+      });
+      onSaved(data.user);
+      setName(data.user.name);
+      setEmail(data.user.email);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast(newPassword ? "تم الحفظ وتسجيل الخروج من الأجهزة الأخرى" : "تم الحفظ");
+    } catch (error) {
+      toast(errorText(error));
+    }
+  });
+
   return (
     <>
-      <div className="hero"><div><h1>الإعدادات</h1><div className="muted">بيانات الحساب</div></div></div>
-      <div className="card">
+      <div className="hero"><div><h1>الإعدادات</h1><div className="muted">بيانات حسابك</div></div></div>
+      <form className="card" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+        <h2>الملف الشخصي</h2>
         <div className="form">
-          <label>اسم المدرب<input value={user.name} disabled /></label>
-          <label>البريد الإلكتروني<input value={user.email} disabled /></label>
+          <label>الاسم<input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required minLength={2} autoComplete="name" /></label>
+          <label>البريد الإلكتروني<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} required autoComplete="email" /></label>
         </div>
-        <div className="settings-note">
-          تعديل الاسم والبريد وكلمة المرور غير متاح من الواجهة بعد. لتغيير كلمة المرور حاليًا عدّل SEED_COACH_PASSWORD وشغّل npm run db:seed.
+        <h3>تغيير كلمة المرور</h3>
+        <div className="form">
+          <label>كلمة المرور الجديدة<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} maxLength={200} autoComplete="new-password" /></label>
+          <label>تأكيد كلمة المرور الجديدة<input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} maxLength={200} autoComplete="new-password" /></label>
         </div>
-      </div>
+        {needsCurrent && (
+          <>
+            <h3>تأكيد الهوية</h3>
+            <div className="form">
+              <label>كلمة المرور الحالية<input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required maxLength={200} autoComplete="current-password" /></label>
+              <div className="notice">مطلوبة عند تغيير البريد أو كلمة المرور.</div>
+            </div>
+          </>
+        )}
+        <div className="actions">
+          <button className="btn primary" disabled={busy}>{busy ? "جاري الحفظ..." : "حفظ التغييرات"}</button>
+        </div>
+      </form>
     </>
   );
 }

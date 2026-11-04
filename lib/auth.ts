@@ -59,6 +59,12 @@ export async function getSessionUser() {
   return result.rows[0];
 }
 
+export async function currentSessionTokenHash() {
+  const store = await cookies();
+  const token = store.get(env.sessionCookieName)?.value;
+  return token ? sha256(token) : null;
+}
+
 export async function requireUser(roles?: Role[]) {
   const user = await getSessionUser();
   if (!user) throw new Error("UNAUTHORIZED");

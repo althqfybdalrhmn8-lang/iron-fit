@@ -1,6 +1,7 @@
 import { withTransaction } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { badRequest, isUuid, json, notFound, readJsonObject, requireSameOrigin, route } from "@/lib/http";
+import { removeFile } from "@/lib/storage";
 import { MEMBER_COLUMNS, MEMBER_FROM, createSubscriberLogin, parseMemberInput } from "@/lib/members";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -53,17 +54,24 @@ export const DELETE = route<Ctx>(async (request, { params }) => {
   if (!isUuid(id)) return notFound();
 
   const deleted = await withTransaction(async (client) => {
+    // Video rows are removed by cascade; remember their files so they can be deleted from storage too.
+    const videos = await client.query<{ storage_key: string }>(
+      `select v.storage_key from exercise_videos v inner join members m on m.id = v.member_id
+       where m.id = $1 and m.coach_id = $2`,
+      [id, user.id]
+    );
     const result = await client.query<{ user_id: string | null }>(
       `delete from members where id = $1 and coach_id = $2 returning user_id`,
       [id, user.id]
     );
     const row = result.rows[0];
-    if (!row) return false;
+    if (!row) return null;
     // Remove the member's login too, otherwise it would remain as an orphan account that can still sign in.
     if (row.user_id) await client.query(`delete from users where id = $1 and role = 'SUBSCRIBER'`, [row.user_id]);
-    return true;
+    return videos.rows.map((video) => video.storage_key);
   });
 
   if (!deleted) return notFound();
+  await Promise.all(deleted.map((key) => removeFile(key)));
   return json({ ok: true });
 });

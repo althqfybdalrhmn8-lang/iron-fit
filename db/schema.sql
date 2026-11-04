@@ -94,6 +94,18 @@ create table if not exists audit_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists exercise_videos (
+  id uuid primary key default gen_random_uuid(),
+  coach_id uuid not null references users(id) on delete cascade,
+  member_id uuid references members(id) on delete cascade,
+  title text not null check (length(title) between 2 and 120),
+  description text not null default '',
+  storage_key text not null unique,
+  mime_type text not null,
+  size_bytes bigint not null check (size_bytes > 0),
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_members_coach on members(coach_id);
 create index if not exists idx_members_user on members(user_id);
 create index if not exists idx_progress_member on progress_entries(member_id, recorded_at desc);
@@ -102,3 +114,5 @@ create index if not exists idx_sessions_user on sessions(user_id);
 create index if not exists idx_sessions_expiry on sessions(expires_at);
 create index if not exists idx_login_attempts_identifier_time on login_attempts(identifier_hash, created_at desc);
 create index if not exists idx_login_attempts_ip_time on login_attempts(ip_hash, created_at desc);
+create index if not exists idx_videos_coach on exercise_videos(coach_id, created_at desc);
+create index if not exists idx_videos_member on exercise_videos(member_id);
